@@ -57,8 +57,8 @@ All settings are under `kiroChat.*` in VS Code Settings.
 | --- | --- |
 | `cliPath` | Absolute path to `kiro-cli` if it is not on PATH |
 | `linuxCliPath` / `osxCliPath` / `windowsCliPath` | OS-specific path overrides |
-| `shell` | `auto`, `bash`, `zsh`, `fish`, `pwsh`, `powershell`, `cmd` |
-| `useLoginShell` | macOS/Linux: spawn through a login shell so nvm/Homebrew PATH works |
+| `shell` | `auto`, `bash`, `zsh`, `fish`, `pwsh`, `powershell`, `cmd`. On Windows, `bash` is Git Bash (not the WSL System32 shim); `auto` is `pwsh`. |
+| `useLoginShell` | Spawn through a login shell so nvm/Homebrew (macOS/Linux) or Git Bash (Windows) PATH works. On Windows this only applies to `bash`, `zsh`, and `fish`. |
 | `extraArgs` | Extra args after `kiro-cli acp` |
 | `env` | Extra environment variables |
 | `cwd` | Working directory (empty = current workspace folder) |

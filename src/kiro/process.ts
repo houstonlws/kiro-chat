@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
   defaultCliCandidates,
+  isPosixShell,
   readSettings,
   resolveShellName,
   workspaceCwd,
@@ -70,14 +71,15 @@ export async function spawnAcpProcess(): Promise<SpawnedAcp> {
   }
   const cliPath = await resolveCliPath(settings);
   const extra = settings.extraArgs ?? [];
-  const env = { ...process.env, ...settings.env };
-  const useLogin =
-    settings.useLoginShell && process.platform !== "win32";
+  const shellName = resolveShellName(settings.shell);
+  const shell = await resolveShellBinary(shellName);
+  const env = withShellEnv({ ...process.env, ...settings.env }, shellName, shell, settings.env);
+  const useLogin = settings.useLoginShell && isPosixShell(shellName);
 
-  info(`Spawning ${cliPath} acp in ${cwd} (loginShell=${useLogin})`);
+  info(`Spawning ${cliPath} acp in ${cwd} (loginShell=${useLogin} shell=${shell})`);
 
   if (useLogin) {
-    return spawnViaLoginShell(cliPath, extra, cwd, env, settings);
+    return spawnViaLoginShell(cliPath, extra, cwd, env, shell);
   }
   return spawnDirect(cliPath, extra, cwd, env);
 }
@@ -89,10 +91,11 @@ export async function runCli(
   const settings = readSettings();
   const cliPath = await resolveCliPath(settings);
   const workdir = cwd ?? workspaceCwd() ?? process.cwd();
-  const env = { ...process.env, ...settings.env };
+  const shellName = resolveShellName(settings.shell);
+  const shell = await resolveShellBinary(shellName);
+  const env = withShellEnv({ ...process.env, ...settings.env }, shellName, shell, settings.env);
 
-  if (settings.useLoginShell && process.platform !== "win32") {
-    const shell = shellBinary(resolveShellName(settings.shell));
+  if (settings.useLoginShell && isPosixShell(shellName)) {
     try {
       const { stdout, stderr } = await execFileAsync(
         shell,
@@ -180,16 +183,14 @@ function spawnViaLoginShell(
   extra: string[],
   cwd: string,
   env: NodeJS.ProcessEnv,
-  settings: KiroSettings,
+  shell: string,
 ): SpawnedAcp {
-  const shellName = resolveShellName(settings.shell);
-  const shell = shellBinary(shellName === "zsh" ? "zsh" : "bash");
   // Profile scripts get /dev/null on fd 0. ACP stdin is fd 3.
   const stdio: StdioOptions = ["ignore", "pipe", "pipe", "pipe"];
   const child = spawn(
     shell,
     ["-l", "-c", 'exec "$0" "$@" <&3', cliPath, "acp", ...extra],
-    { cwd, env, stdio },
+    { cwd, env, stdio, windowsHide: true },
   );
   const stdin = child.stdio[3] as NodeJS.WritableStream | null;
   if (!stdin || !child.stdout) {
@@ -226,7 +227,7 @@ async function whichFromShell(
       const lines = stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
       return { path: lines[0], lines };
     }
-    const shell = shellBinary(resolveShellName(settings.shell));
+    const shell = await resolveShellBinary(resolveShellName(settings.shell));
     const { stdout } = await execFileAsync(
       shell,
       settings.useLoginShell ? ["-l", "-c", `command -v ${binary}`] : ["-c", `command -v ${binary}`],
@@ -247,23 +248,118 @@ async function whichFromShell(
   }
 }
 
-function shellBinary(name: string): string {
-  if (process.platform === "win32") {
-    if (name === "cmd") {
-      return process.env.ComSpec || "cmd.exe";
+function withShellEnv(
+  env: NodeJS.ProcessEnv,
+  shellName: string,
+  shell: string,
+  userEnv: Record<string, string>,
+): NodeJS.ProcessEnv {
+  if (!isPosixShell(shellName) || Object.prototype.hasOwnProperty.call(userEnv, "SHELL")) {
+    return env;
+  }
+  return { ...env, SHELL: shell };
+}
+
+async function resolveShellBinary(name: string): Promise<string> {
+  if (process.platform !== "win32") {
+    if (name === "zsh") {
+      return "/bin/zsh";
     }
-    if (name === "powershell") {
-      return "powershell.exe";
+    if (name === "fish") {
+      return "/usr/bin/fish";
     }
+    return "/bin/bash";
+  }
+  if (name === "cmd") {
+    return process.env.ComSpec || "cmd.exe";
+  }
+  if (name === "powershell") {
+    return "powershell.exe";
+  }
+  if (name === "pwsh") {
     return "pwsh.exe";
   }
-  if (name === "zsh") {
-    return "/bin/zsh";
+  const found = await findWindowsPosixShell(name);
+  if (!found) {
+    throw new Error(
+      `Could not find ${name}.exe on Windows. Install Git for Windows (bash is Git Bash, not the WSL System32 shim), or set kiroChat.shell to pwsh, powershell, or cmd.`,
+    );
   }
-  if (name === "fish") {
-    return "/usr/bin/fish";
+  return found;
+}
+
+async function findWindowsPosixShell(name: string): Promise<string | undefined> {
+  const exe = `${name}.exe`;
+  const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+  const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  const defaults =
+    name === "bash"
+      ? [
+          path.join(programFiles, "Git", "bin", "bash.exe"),
+          path.join(programFiles, "Git", "usr", "bin", "bash.exe"),
+          path.join(programFilesX86, "Git", "bin", "bash.exe"),
+          path.join(programFilesX86, "Git", "usr", "bin", "bash.exe"),
+        ]
+      : [
+          path.join(programFiles, "Git", "usr", "bin", exe),
+          path.join(programFilesX86, "Git", "usr", "bin", exe),
+        ];
+
+  for (const candidate of defaults) {
+    if (isUsableWindowsShell(candidate)) {
+      return candidate;
+    }
   }
-  return "/bin/bash";
+
+  for (const dir of (process.env.PATH || "").split(path.delimiter)) {
+    if (!dir) {
+      continue;
+    }
+    const candidate = path.join(dir, exe);
+    if (isUsableWindowsShell(candidate)) {
+      return candidate;
+    }
+  }
+
+  try {
+    const { stdout } = await execFileAsync("where.exe", [exe], { timeout: 8000 });
+    for (const line of stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
+      if (isUsableWindowsShell(line)) {
+        return line;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined;
+}
+
+function isUsableWindowsShell(filePath: string): boolean {
+  if (isWslBashStub(filePath)) {
+    return false;
+  }
+  try {
+    return existsSync(filePath) && statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isWslBashStub(filePath: string): boolean {
+  const normalized = path.normalize(filePath).toLowerCase();
+  const winDir = path.normalize(process.env.SystemRoot || process.env.windir || "C:\\Windows").toLowerCase();
+  if (normalized.endsWith(`${path.sep}bash.exe`)) {
+    if (normalized.startsWith(path.join(winDir, "system32").toLowerCase())) {
+      return true;
+    }
+    if (normalized.startsWith(path.join(winDir, "syswow64").toLowerCase())) {
+      return true;
+    }
+    if (normalized.startsWith(path.join(winDir, "sysnative").toLowerCase())) {
+      return true;
+    }
+  }
+  return normalized.includes(`${path.sep}windowsapps${path.sep}`);
 }
 
 function expandHome(p: string): string {

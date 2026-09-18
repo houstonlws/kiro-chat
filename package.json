@@ -161,12 +161,12 @@
             "cmd"
           ],
           "default": "auto",
-          "description": "Shell used to resolve PATH and optionally wrap kiro-cli on macOS/Linux."
+          "description": "Shell used to resolve PATH and optionally wrap kiro-cli. On Windows, bash means Git Bash (not the WSL System32 shim). auto is pwsh on Windows, zsh on macOS, and bash on Linux."
         },
         "kiroChat.useLoginShell": {
           "type": "boolean",
           "default": true,
-          "description": "On macOS/Linux, spawn through a login shell so nvm/Homebrew PATH is available."
+          "description": "Spawn through a login shell so nvm/Homebrew (macOS/Linux) or Git Bash (Windows) PATH is available. On Windows this only applies to bash, zsh, and fish."
         },
         "kiroChat.extraArgs": {
           "type": "array",

@@ -80,3 +80,7 @@ export function resolveShellName(shell: KiroSettings["shell"]): string {
   }
   return "bash";
 }
+
+export function isPosixShell(name: string): boolean {
+  return name === "bash" || name === "zsh" || name === "fish";
+}
