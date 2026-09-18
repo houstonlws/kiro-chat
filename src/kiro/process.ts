@@ -185,14 +185,19 @@ function spawnViaLoginShell(
   env: NodeJS.ProcessEnv,
   shell: string,
 ): SpawnedAcp {
-  // Profile scripts get /dev/null on fd 0. ACP stdin is fd 3.
-  const stdio: StdioOptions = ["ignore", "pipe", "pipe", "pipe"];
+  // Unix: profile scripts get /dev/null on fd 0; ACP stdin is fd 3.
+  // Git Bash/MSYS does not inherit extra Node stdio fds, so <&3 fails with
+  // "3: Bad file descriptor". Keep ACP on stdin; login profiles rarely consume it.
+  const win = process.platform === "win32";
+  const stdio: StdioOptions = win ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe", "pipe"];
   const child = spawn(
     shell,
-    ["-l", "-c", 'exec "$0" "$@" <&3', cliPath, "acp", ...extra],
+    win
+      ? ["-l", "-c", 'exec "$0" "$@"', cliPath, "acp", ...extra]
+      : ["-l", "-c", 'exec "$0" "$@" <&3', cliPath, "acp", ...extra],
     { cwd, env, stdio, windowsHide: true },
   );
-  const stdin = child.stdio[3] as NodeJS.WritableStream | null;
+  const stdin = (win ? child.stdin : child.stdio[3]) as NodeJS.WritableStream | null;
   if (!stdin || !child.stdout) {
     child.kill();
     throw new Error("Failed to create login-shell ACP pipes");
