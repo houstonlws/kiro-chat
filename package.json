@@ -1,0 +1,224 @@
+{
+  "name": "kiro-chat",
+  "displayName": "Kiro Chat",
+  "description": "Sidebar chat wrapper for kiro-cli over ACP",
+  "version": "0.1.0",
+  "publisher": "houston",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Chat",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "icon": "media/icon.png",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kiroChat",
+          "title": "Kiro Chat",
+          "icon": "media/activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "kiroChat": [
+        {
+          "type": "webview",
+          "id": "kiroChat.panel",
+          "name": "Kiro Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "kiroChat.open",
+        "title": "Kiro Chat: Open"
+      },
+      {
+        "command": "kiroChat.newSession",
+        "title": "Kiro Chat: New Session"
+      },
+      {
+        "command": "kiroChat.sessionList",
+        "title": "Kiro Chat: Session List"
+      },
+      {
+        "command": "kiroChat.cancelTurn",
+        "title": "Kiro Chat: Cancel Turn"
+      },
+      {
+        "command": "kiroChat.restartCli",
+        "title": "Kiro Chat: Restart CLI"
+      },
+      {
+        "command": "kiroChat.addFiles",
+        "title": "Add to Kiro Chat"
+      },
+      {
+        "command": "kiroChat.addFile",
+        "title": "Add File to Kiro Chat"
+      },
+      {
+        "command": "kiroChat.addSelection",
+        "title": "Add Selection to Kiro Chat"
+      },
+      {
+        "command": "kiroChat.keepFile",
+        "title": "Keep File Change"
+      },
+      {
+        "command": "kiroChat.undoFile",
+        "title": "Undo File Change"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "kiroChat.open",
+        "key": "ctrl+alt+k",
+        "mac": "cmd+alt+k"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "kiroChat.addFiles",
+          "group": "kiroChat@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "kiroChat.addSelection",
+          "when": "editorHasSelection",
+          "group": "kiroChat@1"
+        },
+        {
+          "command": "kiroChat.addFile",
+          "when": "!editorHasSelection",
+          "group": "kiroChat@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "kiroChat.addFiles",
+          "when": "false"
+        },
+        {
+          "command": "kiroChat.addFile",
+          "when": "false"
+        },
+        {
+          "command": "kiroChat.addSelection",
+          "when": "false"
+        },
+        {
+          "command": "kiroChat.keepFile",
+          "when": "false"
+        },
+        {
+          "command": "kiroChat.undoFile",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Kiro Chat",
+      "properties": {
+        "kiroChat.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to kiro-cli. Empty searches PATH and common install locations."
+        },
+        "kiroChat.linuxCliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Linux-only override for the kiro-cli path."
+        },
+        "kiroChat.osxCliPath": {
+          "type": "string",
+          "default": "",
+          "description": "macOS-only override for the kiro-cli path."
+        },
+        "kiroChat.windowsCliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Windows-only override for the kiro-cli path."
+        },
+        "kiroChat.shell": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "bash",
+            "zsh",
+            "fish",
+            "pwsh",
+            "powershell",
+            "cmd"
+          ],
+          "default": "auto",
+          "description": "Shell used to resolve PATH and optionally wrap kiro-cli on macOS/Linux."
+        },
+        "kiroChat.useLoginShell": {
+          "type": "boolean",
+          "default": true,
+          "description": "On macOS/Linux, spawn through a login shell so nvm/Homebrew PATH is available."
+        },
+        "kiroChat.extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments appended after `kiro-cli acp`."
+        },
+        "kiroChat.env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Extra environment variables passed to kiro-cli."
+        },
+        "kiroChat.cwd": {
+          "type": "string",
+          "default": "",
+          "description": "Working directory for kiro-cli. Empty uses the current workspace folder."
+        },
+        "kiroChat.logTraffic": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log ACP JSON-RPC traffic to the Kiro Chat ACP output channel."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "vscode:prepublish": "node esbuild.mjs --production"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^1.4.0",
+    "dompurify": "^3.2.6",
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.2.0",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.15.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.25.4",
+    "typescript": "^5.8.3"
+  }
+}
