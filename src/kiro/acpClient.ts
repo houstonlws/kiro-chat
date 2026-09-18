@@ -6,6 +6,7 @@ import { TerminalBroker } from "./terminals";
 import { readTextFile, writeTextFile } from "./fs";
 import { readSettings } from "../settings";
 import { error, info, logTrafficLine } from "../logger";
+import { debugLog } from "../debugLog";
 
 export interface PermissionRequestPayload {
   requestId: string;
@@ -49,6 +50,22 @@ export class KiroAcpConnection {
     const spawned = await spawnAcpProcess();
     this.spawned = spawned;
     spawned.process.on("exit", (code) => this.handlers.onProcessExit?.(code));
+    // #region agent log
+    spawned.process.on("error", (err: NodeJS.ErrnoException) => {
+      debugLog("acpClient.ts:process.error", "ACP child error", {
+        message: err?.message,
+        code: err?.code,
+        errno: err?.errno,
+        pid: spawned.process.pid ?? null,
+      }, "F");
+    });
+    debugLog("acpClient.ts:connect", "spawned, starting initialize", {
+      pid: spawned.process.pid ?? null,
+      cliPath: spawned.cliPath,
+      cwd: spawned.cwd,
+      platform: process.platform,
+    }, "F");
+    // #endregion
 
     const input = Writable.toWeb(spawned.stdin as Writable);
     const output = Readable.toWeb(spawned.stdout as Readable) as ReadableStream<Uint8Array>;
@@ -103,17 +120,36 @@ export class KiroAcpConnection {
     this.connection = connection;
     this.agent = connection.agent;
 
-    const init = await connection.agent.request(acp.methods.agent.initialize, {
-      protocolVersion: acp.PROTOCOL_VERSION,
-      clientCapabilities: {
-        fs: { readTextFile: true, writeTextFile: true },
-        terminal: true,
-      },
-      clientInfo: { name: "kiro-chat", version: "0.1.0" },
-    });
-    this.init = init;
-    info(`ACP initialized protocol=${init.protocolVersion} agent=${init.agentInfo?.name ?? "kiro-cli"}`);
-    return init;
+    try {
+      const init = await connection.agent.request(acp.methods.agent.initialize, {
+        protocolVersion: acp.PROTOCOL_VERSION,
+        clientCapabilities: {
+          fs: { readTextFile: true, writeTextFile: true },
+          terminal: true,
+        },
+        clientInfo: { name: "kiro-chat", version: "0.1.0" },
+      });
+      this.init = init;
+      info(`ACP initialized protocol=${init.protocolVersion} agent=${init.agentInfo?.name ?? "kiro-cli"}`);
+      // #region agent log
+      debugLog("acpClient.ts:initialize", "initialize ok", {
+        protocolVersion: init.protocolVersion,
+        agent: init.agentInfo?.name ?? "kiro-cli",
+        pid: spawned.process.pid ?? null,
+      }, "F");
+      // #endregion
+      return init;
+    } catch (err) {
+      // #region agent log
+      debugLog("acpClient.ts:initialize.catch", "initialize failed", {
+        message: err instanceof Error ? err.message : String(err),
+        pid: spawned.process.pid ?? null,
+        exitCode: spawned.process.exitCode,
+        killed: spawned.process.killed,
+      }, "F");
+      // #endregion
+      throw err;
+    }
   }
 
   async newSession(cwd: string): Promise<acp.NewSessionResponse> {

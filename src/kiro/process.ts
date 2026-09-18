@@ -11,6 +11,7 @@ import {
   type KiroSettings,
 } from "../settings";
 import { error, info } from "../logger";
+import { debugLog } from "../debugLog";
 
 const execFileAsync = promisify(execFile);
 
@@ -23,67 +24,42 @@ export interface SpawnedAcp {
 }
 
 export async function resolveCliPath(settings: KiroSettings = readSettings()): Promise<string> {
+  let source = "missing";
+  let resolved = "";
+  let whereLines: string[] | undefined;
   if (settings.cliPath.trim()) {
-    const resolved = expandHome(settings.cliPath.trim());
-    // #region agent log
-    fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
-      body: JSON.stringify({
-        sessionId: "e15303",
-        runId: "pre-fix",
-        hypothesisId: "B",
-        location: "process.ts:resolveCliPath",
-        message: "resolved cliPath from settings",
-        data: { source: "settings", resolved, platform: process.platform, probe: probeExecutable(resolved) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    return resolved;
-  }
-  const fromShell = await whichFromShell("kiro-cli", settings);
-  if (fromShell) {
-    // #region agent log
-    fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
-      body: JSON.stringify({
-        sessionId: "e15303",
-        runId: "pre-fix",
-        hypothesisId: "C",
-        location: "process.ts:resolveCliPath",
-        message: "resolved cliPath from where/shell",
-        data: { source: "which", fromShell, platform: process.platform, probe: probeExecutable(fromShell) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    return fromShell;
-  }
-  for (const candidate of defaultCliCandidates()) {
-    if (candidate.includes(path.sep) && existsSync(candidate)) {
-      // #region agent log
-      fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
-        body: JSON.stringify({
-          sessionId: "e15303",
-          runId: "pre-fix",
-          hypothesisId: "C",
-          location: "process.ts:resolveCliPath",
-          message: "resolved cliPath from default candidate",
-          data: { source: "candidate", candidate, platform: process.platform, probe: probeExecutable(candidate) },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-      return candidate;
+    source = "settings";
+    resolved = expandHome(settings.cliPath.trim());
+  } else {
+    const found = await whichFromShell("kiro-cli", settings);
+    whereLines = found.lines;
+    if (found.path) {
+      source = "which";
+      resolved = found.path;
+    } else {
+      for (const candidate of defaultCliCandidates()) {
+        if (candidate.includes(path.sep) && existsSync(candidate)) {
+          source = "candidate";
+          resolved = candidate;
+          break;
+        }
+      }
     }
   }
-  throw new Error(
-    "Could not find kiro-cli. Set kiroChat.cliPath (or the OS-specific path) to the absolute binary location.",
+  // #region agent log
+  debugLog(
+    "process.ts:resolveCliPath",
+    "resolved cliPath",
+    { source, resolved, whereLines, platform: process.platform, probe: resolved ? probeExecutable(resolved) : null },
+    source === "settings" ? "B" : "C",
   );
+  // #endregion
+  if (!resolved) {
+    throw new Error(
+      "Could not find kiro-cli. Set kiroChat.cliPath (or the OS-specific path) to the absolute binary location.",
+    );
+  }
+  return resolved;
 }
 
 export async function spawnAcpProcess(): Promise<SpawnedAcp> {
@@ -151,27 +127,15 @@ function spawnDirect(
     cwdExists = false;
   }
   // #region agent log
-  fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
-    body: JSON.stringify({
-      sessionId: "e15303",
-      runId: "pre-fix",
-      hypothesisId: "A",
-      location: "process.ts:spawnDirect",
-      message: "about to spawnDirect",
-      data: {
-        cliPath,
-        extra,
-        cwd,
-        cwdExists,
-        windowsHide: true,
-        platform: process.platform,
-        probe: probeExecutable(cliPath),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
+  debugLog("process.ts:spawnDirect", "about to spawnDirect", {
+    cliPath,
+    extra,
+    cwd,
+    cwdExists,
+    windowsHide: true,
+    platform: process.platform,
+    probe: probeExecutable(cliPath),
+  }, "A");
   // #endregion
   const child = spawn(cliPath, ["acp", ...extra], {
     cwd,
@@ -194,39 +158,15 @@ function spawnDirect(
       probe: probeExecutable(cliPath),
     };
     info(`[debug-e15303] spawn error ${JSON.stringify(payload)}`);
-    fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
-      body: JSON.stringify({
-        sessionId: "e15303",
-        runId: "pre-fix",
-        hypothesisId: "A",
-        location: "process.ts:spawnDirect.error",
-        message: "child spawn error",
-        data: payload,
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
+    debugLog("process.ts:spawnDirect.error", "child spawn error", payload, "A");
   });
-  fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
-    body: JSON.stringify({
-      sessionId: "e15303",
-      runId: "pre-fix",
-      hypothesisId: "A",
-      location: "process.ts:spawnDirect.after",
-      message: "spawn returned",
-      data: {
-        pid: child.pid ?? null,
-        spawnfile: child.spawnfile,
-        hasStdin: Boolean(child.stdin),
-        hasStdout: Boolean(child.stdout),
-        exitCode: child.exitCode,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
+  debugLog("process.ts:spawnDirect.after", "spawn returned", {
+    pid: child.pid ?? null,
+    spawnfile: child.spawnfile,
+    hasStdin: Boolean(child.stdin),
+    hasStdout: Boolean(child.stdout),
+    exitCode: child.exitCode,
+  }, "A");
   // #endregion
   if (!child.stdin || !child.stdout) {
     throw new Error("Failed to create stdio pipes for kiro-cli");
@@ -262,38 +202,29 @@ function spawnViaLoginShell(
 
 function attachStderr(child: ChildProcess): void {
   child.stderr?.on("data", (buf: Buffer) => {
-    info(`[kiro-cli] ${buf.toString()}`);
+    const text = buf.toString();
+    info(`[kiro-cli] ${text}`);
+    // #region agent log
+    debugLog("process.ts:stderr", "kiro-cli stderr", { preview: text.slice(0, 400) }, "G");
+    // #endregion
   });
   child.on("exit", (code, signal) => {
     info(`kiro-cli exited code=${code} signal=${signal}`);
+    // #region agent log
+    debugLog("process.ts:exit", "kiro-cli exited", { code, signal, pid: child.pid ?? null }, "G");
+    // #endregion
   });
 }
 
 async function whichFromShell(
   binary: string,
   settings: KiroSettings,
-): Promise<string | undefined> {
+): Promise<{ path?: string; lines?: string[] }> {
   try {
     if (process.platform === "win32") {
       const { stdout } = await execFileAsync("where", [binary], { timeout: 8000 });
       const lines = stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-      const first = lines[0];
-      // #region agent log
-      fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
-        body: JSON.stringify({
-          sessionId: "e15303",
-          runId: "pre-fix",
-          hypothesisId: "B",
-          location: "process.ts:whichFromShell",
-          message: "where kiro-cli results",
-          data: { lines, first, probes: lines.slice(0, 5).map(probeExecutable) },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-      return first;
+      return { path: lines[0], lines };
     }
     const shell = shellBinary(resolveShellName(settings.shell));
     const { stdout } = await execFileAsync(
@@ -302,24 +233,17 @@ async function whichFromShell(
       { timeout: 8000 },
     );
     const found = stdout.trim().split(/\r?\n/)[0];
-    return found || undefined;
+    return { path: found || undefined, lines: found ? [found] : [] };
   } catch (err) {
     // #region agent log
-    fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
-      body: JSON.stringify({
-        sessionId: "e15303",
-        runId: "pre-fix",
-        hypothesisId: "C",
-        location: "process.ts:whichFromShell.catch",
-        message: "which/where failed",
-        data: { platform: process.platform, err: err instanceof Error ? err.message : String(err) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
+    debugLog(
+      "process.ts:whichFromShell.catch",
+      "which/where failed",
+      { platform: process.platform, err: err instanceof Error ? err.message : String(err) },
+      "C",
+    );
     // #endregion
-    return undefined;
+    return {};
   }
 }
 

@@ -28,6 +28,7 @@ import {
 import { applyToolCallUpdate } from "../kiro/toolDisplay";
 import { attachmentFromSelection, attachmentsFromUris, collectContext } from "../context/collector";
 import { error, info } from "../logger";
+import { debugLog } from "../debugLog";
 
 const STATE_KEY = "kiroChat.workspaceState";
 
@@ -298,19 +299,11 @@ export class ChatController {
         await this.newSession();
       }
       // #region agent log
-      fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
-        body: JSON.stringify({
-          sessionId: "e15303",
-          runId: "pre-fix",
-          hypothesisId: "D",
-          location: "controller.ts:ensureConnected.success",
-          message: "connect succeeded",
-          data: { tabCount: this.tabs.length, view: this.view, connected: this.connected },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
+      debugLog("controller.ts:ensureConnected.success", "connect succeeded", {
+        tabCount: this.tabs.length,
+        view: this.view,
+        connected: this.connected,
+      }, "D");
       // #endregion
     } catch (err) {
       error("Failed to connect to kiro-cli", err);
@@ -326,19 +319,7 @@ export class ChatController {
       };
       info(`[debug-e15303] connect failed ${JSON.stringify(failData)}`);
       // #region agent log
-      fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
-        body: JSON.stringify({
-          sessionId: "e15303",
-          runId: "pre-fix",
-          hypothesisId: "D",
-          location: "controller.ts:ensureConnected.catch",
-          message: "connect failed",
-          data: failData,
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
+      debugLog("controller.ts:ensureConnected.catch", "connect failed", failData, "D");
       // #endregion
       if (/auth|login/i.test(this.errorMsg)) {
         this.authHint = "Run `kiro-cli login` in a terminal, then Restart CLI.";
