@@ -297,10 +297,49 @@ export class ChatController {
       if (!this.tabs.length) {
         await this.newSession();
       }
+      // #region agent log
+      fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
+        body: JSON.stringify({
+          sessionId: "e15303",
+          runId: "pre-fix",
+          hypothesisId: "D",
+          location: "controller.ts:ensureConnected.success",
+          message: "connect succeeded",
+          data: { tabCount: this.tabs.length, view: this.view, connected: this.connected },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
     } catch (err) {
       error("Failed to connect to kiro-cli", err);
       this.connected = false;
       this.errorMsg = err instanceof Error ? err.message : String(err);
+      const failData = {
+        errorMsg: this.errorMsg,
+        errName: err instanceof Error ? err.name : typeof err,
+        errCode: err && typeof err === "object" && "code" in err ? (err as { code: unknown }).code : undefined,
+        tabCount: this.tabs.length,
+        view: this.view,
+        composerWouldHide: this.tabs.length === 0,
+      };
+      info(`[debug-e15303] connect failed ${JSON.stringify(failData)}`);
+      // #region agent log
+      fetch("http://127.0.0.1:7594/ingest/da3c68fa-3ee2-4065-82b9-221861837eca", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "e15303" },
+        body: JSON.stringify({
+          sessionId: "e15303",
+          runId: "pre-fix",
+          hypothesisId: "D",
+          location: "controller.ts:ensureConnected.catch",
+          message: "connect failed",
+          data: failData,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       if (/auth|login/i.test(this.errorMsg)) {
         this.authHint = "Run `kiro-cli login` in a terminal, then Restart CLI.";
       }
